@@ -12,30 +12,29 @@ maxDepth = 2
 conn = psycopg2.connect("dbname=ogatest user=postgres password=1234")
 
 def crawl(start, megaLinks, allLinks, depth):
-  links = set()
-
-  parse(start, megaLinks, allLinks, links)
-
   if(depth>maxDepth): return
+  links = set()
+  parse(start, megaLinks, links)
 
   global count
-  localcount = 0
-  linkcount = len(links)
   depthstring = ""
-  for i in range(depth): depthstring+="--|"
+  for i in range(depth): 
+    depthstring+="--|"
 
-  for link in links:
-    count+=1
-    localcount+=1
-    t = threading.Thread(target=crawl, args=(link, megaLinks, allLinks, depth+1))
-    #t.daemon = True
-    t.start()
-    print "%s %d - %d - %d/%d Crawling: %s" % (depthstring, count, len(megaLinks), localcount, linkcount, link)
-    #sys.stdout.flush()
-    #crawl(link, megaLinks, allLinks, depth+1)
+  #threads = []
 
-def parse(page, megaLinks, allLinks, links):
-  #Try to load page and get links
+  explore = [[link,parse(link, megaLinks,set())] for link in links]
+  #t= threading.Thread(target=parse, args=(link, megaLinks, allLinks, newLinks))
+  # parse(link, megaLinks, allLinks, newLinks)
+  # [x.start() for x in threads]
+  # [x.join() for x in threads]
+
+  print explore
+  #explore = [link for link in newLinks]
+
+def parse(page, megaLinks, links):
+  score = 0
+
   try:
     hdr = { 'User-Agent' : 'Just a friendly bot passing through!' }
     req = urllib2.Request(page, headers=hdr)
@@ -45,8 +44,9 @@ def parse(page, megaLinks, allLinks, links):
         s = unicode(link.get('href'))
         megalinkre = re.search('(https://)(www.|)mega.co.nz/#!.{52}$', s)
         nonmegalinkre = re.search('(http://)(www.|)', s)
-        if megalinkre and s not in megaLinks:
-          megaLinks.add(s)#dont really need to keep this
+        if megalinkre:
+          score += 1
+          megaLinks.add(s)
           store(s) # make this async else it will slow it down even MORE
         elif nonmegalinkre and s not in links:
           links.add(s)
@@ -54,6 +54,7 @@ def parse(page, megaLinks, allLinks, links):
           links.add(page+s)
   except urllib2.URLError, e:
     print e
+    return 0
   except IndexError, e: 
     print e
 
@@ -61,6 +62,8 @@ def parse(page, megaLinks, allLinks, links):
   links = {link for link in links if link not in allLinks} # See set comprehensions when I forget what this is.
   for link in links:
     allLinks.add(link)
+  print score
+  return score
 
 def store(link):
   cur = conn.cursor()
@@ -71,7 +74,7 @@ def store(link):
   cur.close()
 
 crawl("http://www.reddit.com/r/megalinks", megaLinks, allLinks, 0)
-print "beep"
+
 print len(megaLinks)
 
 print "*********************************"
