@@ -9,9 +9,10 @@ import psycopg2
 links = ["http://www.reddit.com/r/megalinks"]
 
 link_queue = Queue.Queue()
-chunk_queue = Queue.Queue(10)
+chunk_queue = Queue.Queue()
 mega_queue = Queue.Queue()
 list_queue = Queue.Queue()
+allLinks = set([])
 
 class ThreadUrl(threading.Thread):
   def __init__(self, link_queue, chunk_queue):
@@ -21,6 +22,7 @@ class ThreadUrl(threading.Thread):
 
   def run(self):
     while True:
+      print "a"
       #grabs link from queue
       link = self.link_queue.get()
       print self.link_queue.qsize()," - ",link #should be unique and clean
@@ -42,7 +44,7 @@ class ThreadUrl(threading.Thread):
       self.link_queue.task_done()
 
 class ThreadDatamine(threading.Thread):
-  def __init__(self, data_queue, mega_queue, list_queue):
+  def __init__(self, chunk_queue, mega_queue, list_queue):
     threading.Thread.__init__(self)
     self.chunk_queue = chunk_queue
     self.mega_queue = mega_queue
@@ -51,6 +53,7 @@ class ThreadDatamine(threading.Thread):
   def run(self):
     while True:
       #grabs link from queue
+      print "b ",chunk_queue.qsize()," - ",list_queue.qsize()
       chunk = self.chunk_queue.get()
       #parse the chunk
       soup = BeautifulSoup(chunk)
@@ -76,6 +79,7 @@ class ThreadList(threading.Thread):
   def run(self):
     while True:
       link = self.list_queue.get()
+      print self.list_queue.qsize()," - ",self.link_queue.qsize()
       if(link not in self.allLinks):
         self.allLinks.add(link)
         self.link_queue.put(link)
@@ -109,31 +113,48 @@ def store(link):
 start = time.time()
 def main():
 
-  #spawn a pool of threads, and pass them queue instance
-  for i in range(10):
-    t = ThreadUrl(link_queue, chunk_queue)
-    t.start()
+  depth=0
+  max_depth=3
 
-  #init population of queue with data
+ #init population of queue with data
   for link in links:
     link_queue.put(link)
 
-  for i in range(100):
-    u = ThreadDatamine(chunk_queue, mega_queue, list_queue)
-    u.start()
+  while depth<max_depth:
+    depth+=1
+    print "DEPTH: ",depth
 
-  for i in range(1):
-    s = ThreadList(list_queue, link_queue)
-    s.start()
+    while not list_queue.empty():
+      link = list_queue.get()
+      print list_queue.qsize()," - ",link_queue.qsize()
+      if(link not in allLinks):
+        allLinks.add(link)
+        link_queue.put(link) 
 
-  for i in range(1):
-    v = ThreadStore(mega_queue)
-    v.start()
 
-  #wait on the queue until everything has been processed
-  link_queue.join()
-  chunk_queue.join()
-  mega_queue.join()
+    #spawn a pool of threads, and pass them queue instance
+    for i in range(10):
+      t = ThreadUrl(link_queue, chunk_queue)
+      t.daemon=True
+      t.start()
+
+    for i in range(10):
+      u = ThreadDatamine(chunk_queue, mega_queue, list_queue)
+      u.daemon=True
+      u.start()
+
+    # for i in range(1):
+    #   v = ThreadStore(mega_queue)
+    #   v.daemon=True
+    #   v.start()
+
+    chunk_queue.join()
+    link_queue.join()
+    # mega_queue.join()
+
+    print "bbb"
+
+  print "END"
 
 main()
 print "Elapsed Time: %s" % (time.time() - start)
